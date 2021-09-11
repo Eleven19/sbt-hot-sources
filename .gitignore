@@ -1,2 +1,34 @@
+## IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VCode
+.vs/
+.vscode/
+.history/
+.lh/
+.bloop/
+.metals/
+metals.sbt
+
+### Mac
+.DS_Store
+
+## sbt
+## Only ignore sub-directories below project/
+*/project/
+build.user.sbt
+
+## Scala
+target/
+.bsp/
 *.class
+
 *.log
+
+## Node
+node_modules/
+
+
