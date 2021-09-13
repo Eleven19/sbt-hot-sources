@@ -1,0 +1,7 @@
+# check if config files are generated on install
+
+> show projectID
+> hotSourcesInstall
+$ exists ./.hotSources
+$ must-mirror .hotSources/root.json .expected/.hotSources/root.json
+$ must-mirror .hotSources/root-test.json .expected/.hotSources/root-test.json

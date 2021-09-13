@@ -87,6 +87,7 @@ object HotSourcesDefaults {
   val globalSettings: Seq[Def.Setting[_]] = List(
     HotSourcesKeys.hotSourcesGlobalUniqueId := hotSourcesGlobalUniqueIdTask.value,
     HotSourcesKeys.hotSourcesInstall := hotSourcesInstall.value,
+    HotSourcesKeys.hotSourcesAggregateSourceDependencies := true,
     HotSourcesKeys.hotSourcesIsMetaBuild := {
       val buildStructure = Keys.loadedBuild.value
       val baseDirectory = new File(buildStructure.root)
@@ -253,14 +254,49 @@ object HotSourcesDefaults {
         lazy val previousConfigFile = {
           if (!Files.exists(outFilePath)) None
           else {
-            //TODO: Actually parse the config file???
-            ???
-            // safeParseConfig(outFilePath, logger).map(_.project)
+            safeParseConfig(outFilePath, logger).map(_.project)
           }
         }
-        ???
+
+        val config = {
+          val project = Config.Project(projectName)
+          Config.File(Config.File.LatestVersion, project)
+        }
+
+        writeConfigAtomically(config, outFile.toPath)
+
+        // Only shorten path for configuration files written to the the root build
+        val allInRoot = HotSourcesKeys.hotSourcesAggregateSourceDependencies.in(Global).value
+        val userFriendlyConfigPath = {
+          if (allInRoot || buildBaseDirectory == rootBaseDirectory)
+            outFile.relativeTo(rootBaseDirectory).getOrElse(outFile)
+          else outFile
+        }
+
+        targetNamesToConfigs
+          .put(projectName, GeneratedProject(outFile.toPath, config.project, currentSbtUniverse))
+
+        logger.debug(s"Hot sources wrote the configuration of project '$projectName' to '$outFile'")
+        logger.success(s"Generated $userFriendlyConfigPath")
+        Some(outFile)
       }
     }
+  }
+
+  /** Write configuration to target file atomically. We achieve atomic semantics by writing to a temporary file first
+    * and then moving.
+    *
+    * An atomic write is required to avoid clients of this target file to see an empty file and attempt to parse it (and
+    * fail). This empty file is caused by, for example, `Files.write` whose semantics truncates the size of the file to
+    * zero if it exists. If, for some reason, the clients access the file while write is ongoing, then they will see it
+    * empty and fail.
+    */
+  private def writeConfigAtomically(config: Config.File, target: Path): Unit = {
+    // Create unique tmp path so that move is always atomic (avoids copies across file systems!)
+    val tmpPath = target.resolve(target.getParent.resolve(target.getFileName + ".tmp"))
+    hotsources.config.write(config, tmpPath)
+    Files.move(tmpPath, target, StandardCopyOption.REPLACE_EXISTING)
+    ()
   }
 
   private final val allJson = sbt.GlobFilter("*.json")

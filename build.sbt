@@ -12,7 +12,8 @@ inThisBuild(
         "957246+DamianReeves@users.noreply.github.com",
         url("https://damianreeves.github.io")
       )
-    )
+    ),
+    testFrameworks ++= Seq(new TestFramework("zio.test.sbt.ZTestFramework"))
   )
 )
 
@@ -36,7 +37,11 @@ lazy val root = (project in file("."))
   )
   .settings(
     libraryDependencies ++= Seq(
+      "dev.zio" %% "zio" % V.zio,
+      "dev.zio" %% "zio-json" % V.zioJson,
       "dev.zio" %% "zio-config" % V.zioConfig,
-      "dev.zio" %% "zio-config-magnolia" % V.zioConfig
+      "dev.zio" %% "zio-config-magnolia" % V.zioConfig,
+      "dev.zio" %% "zio-test" % V.zio % Test,
+      "dev.zio" %% "zio-test-sbt" % V.zio % Test
     )
   )
