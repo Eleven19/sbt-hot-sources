@@ -1,7 +1,7 @@
 # check if config files are generated on install
 
-> show projectID
 > hotSourcesInstall
+> check
 
 $ exists ./.hotSources .hotSources/root.json .hotSources/root-test.json
 
