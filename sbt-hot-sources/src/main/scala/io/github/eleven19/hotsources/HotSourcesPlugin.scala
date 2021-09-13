@@ -55,6 +55,10 @@ object HotSourcesKeys {
   val hotSourcesAggregateSourceDependencies: SettingKey[Boolean] = settingKey(
     "Flag to tell hot source to aggregate its config files in the same hot sources dir"
   )
+  val hotSourcesExportJarClassifiers: SettingKey[Option[Set[String]]] =
+    settingKey[Option[Set[String]]](
+      "The classifiers that will be exported with `updateClassifiers`"
+    )
   val hotSourcesProductDirectories: TaskKey[Seq[File]] =
     taskKey[Seq[File]]("Hot sources product directories")
 
@@ -86,8 +90,19 @@ object HotSourcesDefaults {
   private lazy val cwd: String = System.getProperty("user.dir")
   val globalSettings: Seq[Def.Setting[_]] = List(
     HotSourcesKeys.hotSourcesGlobalUniqueId := hotSourcesGlobalUniqueIdTask.value,
+    HotSourcesKeys.hotSourcesExportJarClassifiers := {
+      Option(System.getProperty("hotSources.export-jar-classifiers"))
+        .orElse(Option(System.getenv("HOT_SOURCES_EXPORT_JAR_CLASSIFIERS")))
+        .map(_.split(",").toSet)
+    },
     HotSourcesKeys.hotSourcesInstall := hotSourcesInstall.value,
     HotSourcesKeys.hotSourcesAggregateSourceDependencies := true,
+    // Override classifiers so that we don't resolve always docs
+    Keys.transitiveClassifiers in Keys.updateClassifiers := {
+      val old = (Keys.transitiveClassifiers in Keys.updateClassifiers).value
+      val bloopClassifiers = HotSourcesKeys.hotSourcesExportJarClassifiers.in(ThisBuild).value
+      (if (bloopClassifiers.isEmpty) old else bloopClassifiers.get).toList
+    },
     HotSourcesKeys.hotSourcesIsMetaBuild := {
       val buildStructure = Keys.loadedBuild.value
       val baseDirectory = new File(buildStructure.root)
@@ -126,6 +141,8 @@ object HotSourcesDefaults {
   // We create build setting proxies to global settings so that we get autocompletion (sbt bug)
   val buildSettings: Seq[Def.Setting[_]] = List(
     HotSourcesKeys.hotSourcesInstall := HotSourcesKeys.hotSourcesInstall.in(Global).value,
+    // Repeat definition so that sbt shows autocopmletion for these settings
+    HotSourcesKeys.hotSourcesExportJarClassifiers := HotSourcesKeys.hotSourcesExportJarClassifiers.in(Global).value,
     HotSourcesKeys.hotSourcesAggregateSourceDependencies := HotSourcesKeys.hotSourcesAggregateSourceDependencies
       .in(Global)
       .value
@@ -258,8 +275,32 @@ object HotSourcesDefaults {
           }
         }
 
+        val classpath = emulateDependencyClasspath.value.map(_.toPath.toAbsolutePath).toList
+
+        val binaryModules = configModules(Keys.update.value)
+        val sourceModules = {
+          val sourceModulesFromSbt = updateClassifiers.value
+          if (sourceModulesFromSbt.nonEmpty) sourceModulesFromSbt
+          else {
+            val previousAllModules =
+              previousConfigFile.flatMap(_.resolution.map(_.modules)).toList.flatten
+            previousAllModules.filter(module => module.artifacts.exists(_.classifier == Some("sources")))
+          }
+        }
+
+        val allModules = mergeModules(binaryModules, sourceModules)
+        val resolution = {
+          val modules = onlyCompilationModules(allModules, classpath).toList
+          if (modules.isEmpty) None else Some(Config.Resolution(modules))
+        }
         val config = {
-          val project = Config.Project(projectName, baseDirectory, Option(buildBaseDirectory.toPath))
+          val project =
+            Config.Project(
+              name = projectName,
+              directory = baseDirectory,
+              workspaceDir = Option(buildBaseDirectory.toPath),
+              resolution = resolution
+            )
           Config.File(Config.File.LatestVersion, project)
         }
 
@@ -456,5 +497,74 @@ object HotSourcesDefaults {
         }
       }
     }
+  }
+
+  def checksumFor(path: Path, algorithm: String): Option[Config.Checksum] = {
+    val presumedChecksumFilename = s"${path.getFileName}.$algorithm"
+    val presumedChecksum = path.getParent.resolve(presumedChecksumFilename)
+    if (!Files.isRegularFile(presumedChecksum)) None
+    else {
+      Try(new String(Files.readAllBytes(presumedChecksum), StandardCharsets.UTF_8)) match {
+        case Success(checksum) => Some(Config.Checksum(algorithm, checksum))
+        case Failure(_)        => None
+      }
+    }
+  }
+
+  def configModules(report: sbt.UpdateReport): Seq[Config.Module] = {
+    val moduleReports = for {
+      configuration <- report.configurations
+      module <- configuration.modules
+    } yield module
+
+    moduleReports.map { mreport =>
+      val artifacts = mreport.artifacts.toList.map { case (a, f) =>
+        val path = f.toPath
+        val artifact = toHotSourcesArtifact(a, f)
+        artifact.checksum match {
+          case Some(_) => artifact
+          case None    =>
+            // If sbt hasn't filled in the checksums field, let's try to do it ourselves
+            val checksum = checksumFor(path, "sha1").orElse(checksumFor(path, "md5"))
+            artifact.copy(checksum = checksum)
+        }
+      }
+
+      val m = mreport.module
+      Config.Module(m.organization, m.name, m.revision, m.configurations, artifacts)
+    }
+  }
+
+  def mergeModules(ms0: Seq[Config.Module], ms1: Seq[Config.Module]): Seq[Config.Module] = {
+    ms0.map { m0 =>
+      ms1.find(m => m0.organization == m.organization && m0.name == m.name && m0.version == m.version) match {
+        case Some(m1) => m0.copy(artifacts = (m0.artifacts ++ m1.artifacts).distinct)
+        case None     => m0
+      }
+    }.distinct
+  }
+
+  def onlyCompilationModules(ms: Seq[Config.Module], classpath: List[Path]): Seq[Config.Module] = {
+    val classpathFiles = classpath.filter(p => Files.exists(p) && !Files.isDirectory(p))
+    if (classpathFiles.isEmpty) Nil
+    else {
+      ms.filter { m =>
+        // The artifacts that have no classifier are the normal binary jars we're interested in
+        m.artifacts.filter(a => a.classifier.isEmpty).exists { a =>
+          classpathFiles.exists(p => Files.isSameFile(a.path, p))
+        }
+      }
+    }
+  }
+
+  lazy val updateClassifiers: Def.Initialize[Task[Seq[Config.Module]]] = Def.taskDyn {
+    val runUpdateClassifiers = HotSourcesKeys.hotSourcesExportJarClassifiers.value.nonEmpty
+    if (!runUpdateClassifiers) Def.task(Seq.empty)
+    else if (HotSourcesKeys.hotSourcesIsMetaBuild.value)
+      Def.task {
+        configModules(Keys.updateSbtClassifiers.value) ++
+          configModules(Keys.updateClassifiers.value)
+      }
+    else Def.task(configModules(Keys.updateClassifiers.value))
   }
 }

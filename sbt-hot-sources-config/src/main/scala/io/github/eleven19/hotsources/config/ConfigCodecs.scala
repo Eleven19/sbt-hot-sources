@@ -19,6 +19,18 @@ object ConfigCodecs {
 
   implicit val pathEncoder: JsonEncoder[Path] = JsonEncoder.string.contramap[Path](path => path.toString())
 
+  implicit val checksumEncoder: JsonEncoder[Checksum] = DeriveJsonEncoder.gen[Checksum]
+  implicit val chesksumDecoder: JsonDecoder[Checksum] = DeriveJsonDecoder.gen[Checksum]
+
+  implicit val artifactEncoder: JsonEncoder[Artifact] = DeriveJsonEncoder.gen[Artifact]
+  implicit val artifactDecoder: JsonDecoder[Artifact] = DeriveJsonDecoder.gen[Artifact]
+
+  implicit val moduleEncoder: JsonEncoder[Module] = DeriveJsonEncoder.gen[Module]
+  implicit val moduleDecoder: JsonDecoder[Module] = DeriveJsonDecoder.gen[Module]
+
+  implicit val resolutionEncoder: JsonEncoder[Resolution] = DeriveJsonEncoder.gen[Resolution]
+  implicit val resolutionDecoder: JsonDecoder[Resolution] = DeriveJsonDecoder.gen[Resolution]
+
   implicit def projectEncoder(implicit pathEncoder: JsonEncoder[Path]): JsonEncoder[Project] =
     DeriveJsonEncoder.gen[Project]
   implicit def projectDecoder(implicit pathDecoder: JsonDecoder[Path]): JsonDecoder[Project] =

@@ -7,7 +7,7 @@ object ConfigCodecsSpec extends DefaultRunnableSpec {
     suite("ConfigCodecs")(
       test("should support encoding a Config.File as a JSON encoded string") {
         val file = Config.File.fromProject(
-          Config.Project("foo", Paths.get("/tmp/workspace/foo"), Some(Paths.get("/tmp/workspace/foo")))
+          Config.Project("foo", Paths.get("/tmp/workspace/foo"), Some(Paths.get("/tmp/workspace/foo")), None)
         )
 
         assertTrue(
