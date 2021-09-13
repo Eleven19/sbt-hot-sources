@@ -150,7 +150,8 @@ object HotSourcesDefaults {
 
   def configSettings: Seq[Def.Setting[_]] = List(
     HotSourcesKeys.hotSourcesTargetName := hotSourcesTargetName.value,
-    HotSourcesKeys.hotSourcesGenerate := hotSourcesGenerate.value
+    HotSourcesKeys.hotSourcesGenerate := hotSourcesGenerate.value,
+    HotSourcesKeys.hotSourcesInternalClasspath := hotSourcesInternalDependencyClasspath.value
   )
 
   val projectSettings: Seq[Def.Setting[_]] =
@@ -400,7 +401,7 @@ object HotSourcesDefaults {
     * Why do we do this instead of a simple `productDirectories ++ libraryDependencies`? We want the classpath to have
     * the correct topological order of the project dependencies.
     */
-  final def bloopInternalDependencyClasspath: Def.Initialize[Task[Seq[(File, File)]]] = {
+  final def hotSourcesInternalDependencyClasspath: Def.Initialize[Task[Seq[(File, File)]]] = {
     Def.taskDyn {
       val currentProject = Keys.thisProjectRef.value
       val data = Keys.settingsData.value

@@ -5,5 +5,5 @@
 
 $ exists ./.hotSources .hotSources/root.json .hotSources/root-test.json
 
-# $ must-mirror .hotSources/root.json .expected/.hotSources/root.json
+#$ must-mirror .hotSources/root.json .expected/.hotSources/root.json
 # $ must-mirror .hotSources/root-test.json .expected/.hotSources/root-test.json
