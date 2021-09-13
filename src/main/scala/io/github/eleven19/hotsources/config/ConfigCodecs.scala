@@ -4,8 +4,29 @@ import java.nio.file.{Files, Path, Paths}
 import io.github.eleven19.hotsources.config.Config._
 import zio.json._
 import java.nio.ByteBuffer
-
+import scala.util.Try
+import scala.util.control.NonFatal
 object ConfigCodecs {
+
+  implicit val pathDecoder: JsonDecoder[Path] = JsonDecoder.string.mapOrFail { s =>
+    try {
+      Right(Paths.get(s))
+    } catch {
+      case NonFatal(error) =>
+        Left(error.getMessage())
+    }
+  }
+
+  implicit val pathEncoder: JsonEncoder[Path] = JsonEncoder.string.contramap[Path](path => path.toString())
+
+  implicit def projectEncoder(implicit pathEncoder: JsonEncoder[Path]): JsonEncoder[Project] =
+    DeriveJsonEncoder.gen[Project]
+  implicit def projectDecoder(implicit pathDecoder: JsonDecoder[Path]): JsonDecoder[Project] =
+    DeriveJsonDecoder.gen[Project]
+
+  implicit val allEncoder: JsonEncoder[File] = DeriveJsonEncoder.gen[File]
+  implicit val allDecoder: JsonDecoder[File] = DeriveJsonDecoder.gen[File]
+
   def read(configDir: Path): Either[Throwable, Config.File] = {
     read(Files.readAllBytes(configDir))
   }

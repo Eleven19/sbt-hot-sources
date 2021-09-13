@@ -259,7 +259,7 @@ object HotSourcesDefaults {
         }
 
         val config = {
-          val project = Config.Project(projectName)
+          val project = Config.Project(projectName, baseDirectory, Option(buildBaseDirectory.toPath))
           Config.File(Config.File.LatestVersion, project)
         }
 
